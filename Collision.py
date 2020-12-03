@@ -1,22 +1,30 @@
-from manimlib.imports import *
+# Some preliminary stuff:
+
+from manimlib.imports import *  # Import Manim Python library
 
 
 def add(v1, v2):
-    return [v1[0] + v2[0], v1[1] + v2[1]]
+    return [v1[0] + v2[0], v1[1] + v2[1]]   # Matrix vector addition with two-dimensional vectors
 
 
 def mul(v, s):
-    return [v[0] * s, v[1] * s]
+    return [v[0] * s, v[1] * s]  # Scale a 2d vector by a constant
 
 
 def dot(v1, v2):
-    return v1[0] * v2[0] + v1[1] * v2[1]
+    return v1[0] * v2[0] + v1[1] * v2[1]    # Dot product for 2d vectors
+
+# Noticeably, I used simple lists in Python to represent vectors because numpy arrays are slow.
+# Most of the effort in making the code was in optimizing. The one hour and ten minute render time is the 
+# fastest I could make it.
 
 
+# Taking the square root for Pythagorean distance slows down the code, so I opted to return squared values.
 def squared_distance(a, b):
     return (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1])
 
 
+# Class AABB is simply an object that stores parameters of a rectangle (center, width and height).
 class AABB:
     def __init__(self, center, width, height):
         self.center = center
@@ -38,6 +46,7 @@ class AABB:
                rect.center[1] + rect.height <= self.center[1] + self.height
 
 
+# Quad trees are the heart of optimizing ball-to-ball collision detection.
 class QuadTree:
     def __init__(self, boundary, cap):
         self.boundary = boundary
@@ -87,6 +96,7 @@ class QuadTree:
         return found
 
 
+# Particle class carries all information about a ball's position, velocity, and other useful variables.
 class Particle(Dot):
     def __init__(self, position_init, vector_init, bounce_init=0.5, **kwargs):
         self.pos = position_init
@@ -98,8 +108,9 @@ class Particle(Dot):
         Dot.__init__(self, point=np.array(position_init + [0]), **kwargs)
 
 
+# This is where all animation begins.
 class scene_1(Scene):
-    CONFIG = {
+    CONFIG = {  # Naming constants for convenience
         "runtime": 30,
         "particle_amount": 1000,
         "gravity": -9.8,
@@ -118,7 +129,7 @@ class scene_1(Scene):
         self.add(self.particles, self.obstacles)
         self.wait(self.runtime)
 
-    def initialize(self):
+    def initialize(self):  # This up until line 197 sets up all objects on the screen, and initial conditions.
         random.seed()
         self.obstacles.add(Arc(start_angle=0, angle=PI / 4, stroke_width=3, radius=1, color=self.obs_color),
                            Arc(start_angle=PI, angle=-PI / 4, stroke_width=3, radius=1, color=self.obs_color))
@@ -185,15 +196,16 @@ class scene_1(Scene):
                                                      RIGHT * 2 * decorations.get_center()[0]))
         self.counter = 0
 
+        # This is where everything about gravity, collision, and bouncing off obstacles is simulated.
         def updater(mob, dt):
-            if self.counter < self.particle_amount:
+            if self.counter < self.particle_amount:  # Randomly spawn a new particle for every subsequent frame
                 particle_colors = [MAROON_A, MAROON_B, MAROON_C, MAROON_D, MAROON_E]
                 mob.add(Particle([-(0.28 + self.p_radius) * (1 - 2 * random.random()), 4], [0, self.gravity / 60],
                                  radius=self.p_radius, color=particle_colors[random.randint(0, 4)]))
                 self.counter += 1
             for i in range(self.counter):
-                mob[i].move_to(np.array(mob[i].pos + [0]))
-                if mob[i].pos[1] >= 3.15 and not mob[i].funnelled:
+                mob[i].move_to(np.array(mob[i].pos + [0]))  # Update every ball's position on the screen
+                if mob[i].pos[1] >= 3.15 and not mob[i].funnelled:  # Check if a ball has entered the Galton Board
                     arc_center = self.obstacles[math.ceil(mob[i].pos[0])].get_arc_center().tolist()
                     delta = squared_distance(arc_center, mob[i].pos)
                     if delta <= (self.p_radius + 1) * (self.p_radius + 1):
@@ -204,18 +216,18 @@ class scene_1(Scene):
                         mob[i].pos = add(mob[i].pos, mul(unit_collision, delta - 1 - self.p_radius))
                 else:
                     mob[i].funnelled = True
-                    if mob[i].pos[1] <= ref_point[1]:
+                    if mob[i].pos[1] <= ref_point[1]:  # Check if a ball is done falling through obstacles
                         if mob[i].category == 0:
                             mob[i].category = (mob[i].pos[0] - ref_point[0]) / dist
                     x_thres = -(mob[i].pos[1] - ref_point[1] + 0.05) / 1.732 - ref_point[0] + dist - 2 * \
                               self.p_radius / 1.732
-                    if not abs(mob[i].pos[0]) < x_thres:
+                    if not abs(mob[i].pos[0]) < x_thres:  # Check if a ball hits the walls on the side
                         index = 2 * (mob[i].pos[0] > 0) - 1
                         unit_collision = [index * 1.732 / 2, 1 / 2]
                         mob[i].vector = add(mob[i].vector, mul(unit_collision, -2 * dot(mob[i].vector,
                                                                                         unit_collision)))
                         mob[i].pos[0] -= index * (abs(mob[i].pos[0]) - x_thres)
-                    x_ref = self.obstacles[2].pos[0]
+                    x_ref = self.obstacles[2].pos[0]  # Up until line 249, check if a ball hits an obstacle
                     y_ref = self.obstacles[2].pos[1]
                     if y_ref + height / 2 > mob[i].pos[1] >= y_ref - height * (self.obstacle_rows - 1 / 2):
                         row = math.ceil((y_ref + height / 2 - mob[i].pos[1]) / height)
@@ -235,14 +247,18 @@ class scene_1(Scene):
                                                                        dot(mob[i].vector, unit_collision)))
                                 mob[i].pos = add(mob[i].pos, mul(unit_collision, delta - self.p_radius -
                                                                  self.obstacle_radius))
+            # Here we run steps_per_frame = 10 iterations per frame for ball-to-ball collision. This eliminates 
+            # some problems due to large time steps, but in turn slows down the code. In particular, this solves
+            # the problem of stacking the balls on top of each other once they have landed. Lower values for
+            # steps_per_frame make ball stacking look badly realistic, so the tradeoff was worth it.
             for j in range(self.steps_per_frame):
-                ptree = QuadTree(AABB(ORIGIN, FRAME_HEIGHT / 2, FRAME_HEIGHT / 2), 2)
+                ptree = QuadTree(AABB(ORIGIN, FRAME_HEIGHT / 2, FRAME_HEIGHT / 2), 2)  # Applying quad trees
                 for i in range(self.counter):
-                    if mob[i].airborne:
+                    if mob[i].airborne:  # Gravity is simulated here.
                         mob[i].vector[1] += self.gravity * dt / self.steps_per_frame
                     mob[i].pos = add(mob[i].pos, mul(mob[i].vector, dt / self.steps_per_frame))
                     mob[i].airborne = True
-                    if mob[i].pos[1] <= ref_point[1] + 0.2:
+                    if mob[i].pos[1] <= ref_point[1] + 0.2:  # Check if a ball hits the walls separating the slots
                         if not abs(mob[i].pos[0]) <= dist - ref_point[0] - self.p_radius:
                             index = 2 * (mob[i].pos[0] > 0) - 1
                             mob[i].vector[0] *= -mob[i].bounce_coeff
@@ -259,11 +275,12 @@ class scene_1(Scene):
                                 if mob[i].pos[0] + self.p_radius >= x:
                                     mob[i].vector[0] *= -mob[i].bounce_coeff
                                     mob[i].pos[0] = x - self.p_radius
-                    if mob[i].pos[1] - self.p_radius < -FRAME_HEIGHT / 2:
+                    if mob[i].pos[1] - self.p_radius < -FRAME_HEIGHT / 2:  # Check if a ball hits the floor
                         mob[i].vector[1] *= -mob[i].bounce_coeff / 3
                         mob[i].pos[1] = self.p_radius - FRAME_HEIGHT / 2
                         mob[i].airborne = False
                     ptree.insert(mob[i])
+                # Finally, handling ball-to-ball collision. This also conveniently handles ball stacking.
                 for i in range(self.counter):
                     neighbors = ptree.query(AABB(mob[i].pos, 2 * self.p_radius + 0.001, 2 * self.p_radius + 0.001))
                     for m in neighbors:
